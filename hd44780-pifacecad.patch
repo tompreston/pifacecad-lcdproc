@@ -1,0 +1,671 @@
+diff -urN -X lcdproc/diff_ignore lcdproc/acinclude.m4 lcdproc.modified/acinclude.m4
+--- lcdproc/acinclude.m4	2013-05-08 20:19:56.000000000 +0100
++++ lcdproc.modified/acinclude.m4	2013-11-28 10:36:35.315846981 +0000
+@@ -241,6 +241,12 @@
+ 				AC_DEFINE([WITH_RASPBERRYPI],[1],[Define if you are using a Raspberry Pi.])
+ 				;;
+ 			esac
++dnl			While PiFace Control and Display is only intended for the
++dnl			Raspberry Pi, the hd4470-pifacecad driver works through SPI.
++dnl			Therefore any SPI connection will do.
++			if test "$x_ac_have_spi" = yes; then
++				HD44780_DRIVERS="$HD44780_DRIVERS hd44780-hd44780-pifacecad.o"
++			fi
+ 			DRIVERS="$DRIVERS hd44780${SO}"
+ 			actdrivers=["$actdrivers hd44780"]
+ 			;;
+diff -urN -X lcdproc/diff_ignore lcdproc/configure.ac lcdproc.modified/configure.ac
+--- lcdproc/configure.ac	2013-05-04 15:31:14.000000000 +0100
++++ lcdproc.modified/configure.ac	2013-11-28 14:29:56.235485832 +0000
+@@ -167,6 +167,12 @@
+ 	AC_DEFINE(HAVE_I2C,[1],[Define to 1 if you have the i2c headers])
+ fi
+ 
++x_ac_have_spi=no
++AC_CHECK_HEADERS([linux/spi/spidev.h], [x_ac_have_spi=yes])
++if test "$x_ac_have_spi" = yes; then
++	AC_DEFINE(HAVE_SPI,[1],[Define to 1 if you have the spi headers])
++fi
++
+ dnl Checks for header files.
+ AC_HEADER_DIRENT
+ AC_HEADER_STDC
+diff -urN -X lcdproc/diff_ignore lcdproc/docs/LCDd.8.in lcdproc.modified/docs/LCDd.8.in
+--- lcdproc/docs/LCDd.8.in	2012-02-18 15:24:45.000000000 +0000
++++ lcdproc.modified/docs/LCDd.8.in	2013-11-29 11:17:00.135625481 +0000
+@@ -210,6 +210,9 @@
+ .B imonlcd
+ iMON IR/LCD modules in cases by Soundgraph/Ahanix/Silverstone/Uneed/Accent/Antec
+ .TP
++.B pifacecad
++PiFace Control and Display for the Raspberry Pi (works with any SPI connection)
++.TP
+ .B irtrans
+ IRTrans IR/VFD modules in cases by Ahanix (e.g. MCE303) and possibly others
+ May require irserver (http://www.irtrans.de/en/download/linux.php) to be running for connectivity.
+diff -urN -X lcdproc/diff_ignore lcdproc/docs/lcdproc-user/drivers/hd44780.docbook lcdproc.modified/docs/lcdproc-user/drivers/hd44780.docbook
+--- lcdproc/docs/lcdproc-user/drivers/hd44780.docbook	2013-04-07 12:50:29.000000000 +0100
++++ lcdproc.modified/docs/lcdproc-user/drivers/hd44780.docbook	2013-11-29 12:28:40.668833479 +0000
+@@ -168,6 +168,10 @@
+         <entry><literal><link linkend="hd44780-raspberrypi">raspberrypi</link></literal></entry>
+         <entry>LCD connected to the GPIO header of a Raspberry Pi</entry>
+       </row>
++      <row>
++        <entry><literal><link linkend="hd44780-pifacecad">pifacecad</link></literal></entry>
++        <entry>PiFace Control and Display for Raspberry Pi</entry>
++      </row>
+     </tbody>
+   </tgroup>
+   </table>
+@@ -3058,6 +3062,39 @@
+ ]]>
+ </screen>
+ </example>
++
++</sect3>
++
++<sect3 id="hd44780-pifacecad">
++<title>PiFace Control and Display</title>
++
++<para>
++The PiFace Control and Display for Raspberry Pi
++(<ulink url="http://www.adafruit.com/products/1109"></ulink>) combines a
++16x2 Character LCD and navigation buttons using the SPI bus (chip_select=1)
++on the Rasperry Pi.
++</para>
++
++<example id="hd44780-pifacecad-config.example">
++<title>HD44780: Configuration example for PiFace Control and Display connection type</title>
++<screen>
++<![CDATA[
++[hd44780]
++ConnectionType=pifacecad
++Device=/dev/spidev0.1
++Port=
++Size=16x2
++Backlight=yes
++
++Keypad=yes
++KeyDirect_1=Left
++KeyDirect_2=Down
++KeyDirect_3=Up
++KeyDirect_4=Right
++KeyDirect_5=Enter
++]]>
++</screen>
++</example>
+ 
+ </sect3>
+ 
+diff -urN -X lcdproc/diff_ignore lcdproc/LCDd.conf lcdproc.modified/LCDd.conf
+--- lcdproc/LCDd.conf	2013-05-08 20:19:55.000000000 +0100
++++ lcdproc.modified/LCDd.conf	2013-11-29 16:35:00.418455789 +0000
+@@ -50,7 +50,7 @@
+ #   mdm166a, ms6931, mtc_s16209x, MtxOrb, mx5000, NoritakeVFD, picolcd,
+ #   pyramid, sdeclcd, sed1330, sed1520, serialPOS, serialVFD, shuttleVFD, sli,
+ #   stv5730, svga, t6963, text, tyan, ula200, vlsys_m428, xosd
+-Driver=curses
++Driver=hd44780
+ 
+ # Tells the driver to bind to the given interface. [default: 127.0.0.1]
+ Bind=127.0.0.1
+@@ -94,7 +94,7 @@
+ # it will be a background screen, only visible when no other screens are
+ # active. The special value 'blank' is similar to no, but only a blank screen
+ # is displayed. [default: on; legal: on, off, blank]
+-#ServerScreen=off
++ServerScreen=no
+ 
+ # Set master backlight setting. If set to 'open' a client may control the
+ # backlight for its own screens (only). [default: open; legal: off, open, on]
+@@ -532,14 +532,14 @@
+ [hd44780]
+ 
+ # Select what type of connection. See documentation for availabe types.
+-ConnectionType=4bit
++ConnectionType=pifacecad
+ 
+ # I/O address of the LPT port. Usual values are: 0x278, 0x378 and 0x3BC.
+ # For I2C connections this sets the slave address (usually 0x20).
+-Port=0x378
++Port=
+ 
+ # Device of the serial or I2C interface [default: /dev/lcd]
+-Device=/dev/ttyS0
++Device=/dev/spidev0.1
+ 
+ # Bitrate of the serial port (0 for interface default)
+ Speed=0
+@@ -562,7 +562,7 @@
+ #OffBrightness=0
+ 
+ # If you have a switchable backlight.
+-Backlight=no
++Backlight=yes
+ 
+ # If you have the additional output port ("bargraph") and you want to
+ # be able to control it with the lcdproc OUTPUT command
+@@ -574,7 +574,7 @@
+ 
+ # Specifies the size of the LCD.
+ # In case of multiple combined displays, this should be the total size.
+-Size=20x4
++Size=16x2
+ 
+ # For multiple combined displays: how many lines does each display have.
+ # Vspan=2,2 means both displays have 2 lines.
+@@ -625,11 +625,11 @@
+ #   KeyDirect_4=Enter
+ # For matrix keys use the X and Y coordinates of the key:
+ #   KeyMatrix_1_3=Enter
+-KeyMatrix_4_1=Enter
+-KeyMatrix_4_2=Up
+-KeyMatrix_4_3=Down
+-KeyMatrix_4_4=Escape
+-
++KeyDirect_1=Left
++KeyDirect_2=Down
++KeyDirect_3=Up
++KeyDirect_4=Right
++KeyDirect_5=Enter
+ 
+ 
+ ## ICP A106 driver ##
+diff -urN -X lcdproc/diff_ignore lcdproc/server/drivers/hd44780-drivers.h lcdproc.modified/server/drivers/hd44780-drivers.h
+--- lcdproc/server/drivers/hd44780-drivers.h	2013-04-07 12:50:29.000000000 +0100
++++ lcdproc.modified/server/drivers/hd44780-drivers.h	2013-11-28 15:10:09.113550609 +0000
+@@ -40,6 +40,9 @@
+ #ifdef WITH_RASPBERRYPI
+ # include "hd44780-rpi.h"
+ #endif
++#ifdef HAVE_SPI
++# include "hd44780-pifacecad.h"
++#endif
+ /* add new connection type header files to the correct section above or here */
+ 
+ 
+@@ -90,6 +93,9 @@
+ #ifdef WITH_RASPBERRYPI
+ 	{ "raspberrypi",   HD44780_CT_RASPBERRYPI,   IF_TYPE_PARPORT,  hd_init_rpi      },
+ #endif
++#ifdef HAVE_SPI
++	{ "pifacecad",   HD44780_CT_PIFACECAD,   IF_TYPE_PIFACECAD,  hd_init_pifacecad      },
++#endif
+ 	/* add new connection types in the correct section above or here */
+ 
+ 	/* default, end of structure element (do not delete) */
+diff -urN -X lcdproc/diff_ignore lcdproc/server/drivers/hd44780-low.h lcdproc.modified/server/drivers/hd44780-low.h
+--- lcdproc/server/drivers/hd44780-low.h	2013-04-07 12:50:29.000000000 +0100
++++ lcdproc.modified/server/drivers/hd44780-low.h	2013-11-28 15:15:07.749307756 +0000
+@@ -55,6 +55,7 @@
+ #define HD44780_CT_USB4ALL		21
+ #define HD44780_CT_RASPBERRYPI		22
+ #define HD44780_CT_PIPLATE		23
++#define HD44780_CT_PIFACECAD		24
+ /**@}*/
+ 
+ /** \name Symbolic names for interface types
+@@ -65,6 +66,7 @@
+ #define IF_TYPE_USB		3
+ #define IF_TYPE_I2C		4
+ #define IF_TYPE_TCP		5
++#define IF_TYPE_PIFACECAD		6
+ /**@}*/
+ 
+ /** \name Symbolic default values
+diff -urN -X lcdproc/diff_ignore lcdproc/server/drivers/hd44780-pifacecad.c lcdproc.modified/server/drivers/hd44780-pifacecad.c
+--- lcdproc/server/drivers/hd44780-pifacecad.c	1970-01-01 01:00:00.000000000 +0100
++++ lcdproc.modified/server/drivers/hd44780-pifacecad.c	2013-11-29 12:28:32.792840203 +0000
+@@ -0,0 +1,427 @@
++/** \file server/drivers/hd44780-pifacecad.c
++ * \c PiFace Control and Display connection type (SPI) of \c hd44780 driver for Hitachi HD44780 based LCD displays.
++ *
++ * The LCD is operated in its 4 bit-mode to be connected to the 8 bit Port B
++ * of a single MCP23S17 that is accessed by the server via the SPI bus.
++ */
++
++/* Copyright (c) 2013 Thomas Preston <thomas.preston@openlx.org.uk>
++ *
++ * The connections are (MCP23S17):
++ * Port A Pin 0     Switch 0
++ * Port A Pin 1     Switch 1
++ * Port A Pin 2     Switch 2
++ * Port A Pin 3     Switch 3
++ * Port A Pin 4     Switch 4
++ * Port A Pin 5     Switch 5
++ * Port A Pin 6     Switch 6
++ * Port A Pin 6     Switch 7
++ * Port B Pin 0     D4
++ * Port B Pin 1     D5
++ * Port B Pin 2     D6
++ * Port B Pin 3     D7
++ * Port B Pin 4     EN
++ * Port B Pin 5     RW
++ * Port B Pin 6     RS
++ *
++ * Backlight
++ * Port B Pin 7   Backlight (optional, active-high)
++ *
++ * Configuration:
++ * device=/dev/spidev0.1   # the device file of the SPI bus
++ * port=0x13   # Port B (GPIOB) on the MCP23S17
++ *
++ * Based mostly on the hd44780-i2c module, see there for a complete history.
++ *
++ * This file is released under the GNU General Public License. Refer to the
++ * COPYING file distributed with this package.
++ */
++
++#include "hd44780-pifacecad.h"
++#include "hd44780-low.h"
++
++#include "report.h"
++#ifdef HAVE_CONFIG_H
++# include "config.h"
++#endif
++#include <stdio.h>
++#include <string.h>
++#include <errno.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include <sys/ioctl.h>
++
++#include <stdint.h> /* For uint8_t */
++#include <linux/spi/spidev.h>
++#include "hd44780.h"
++
++
++// Generally, any function that accesses the LCD control lines needs to be
++// implemented separately for each HW design. This is typically (but not
++// restricted to):
++// HD44780_senddata
++// HD44780_readkeypad
++
++void pifacecad_HD44780_senddata(PrivateData * p,
++                                unsigned char displayID,
++                                unsigned char flags,
++                                unsigned char ch);
++void pifacecad_HD44780_backlight(PrivateData * p, unsigned char state);
++void pifacecad_HD44780_close(PrivateData * p);
++unsigned char pifacecad_HD44780_scankeypad(PrivateData * p);
++
++// below bits are meant for the upper nibble of Port B on the MCP23S17
++#define EN   0x10
++#define RW   0x20
++#define RS   0x40
++#define BL   0x80
++
++static const unsigned char spi_mode = 0;
++static const unsigned char spi_bpw = 8; /* bits per word */
++static const unsigned long spi_speed = 10000000L; /* 10MHz */
++static const unsigned char spi_delay = 0;
++
++#define SPI_HW_ADDR 0
++#define DEFAULT_DEVICE      "/dev/spidev0.1"
++
++#define DELAY_PULSE_US 1 // 1us
++#define DELAY_SETTLE_US 40 // 40us
++#define DELAY_SETUP_0_US 15000 // 15ms
++#define DELAY_SETUP_1_US 5000 // 5ms
++#define DELAY_SETUP_2_US 1000 // 1ms
++
++// MCP23S17
++#define WRITE_CMD 0
++#define READ_CMD 1
++
++// Register addresses
++#define IODIRA 0x00  // I/O direction A
++#define IODIRB 0x01  // I/O direction B
++#define IPOLA 0x02  // I/O polarity A
++#define IPOLB 0x03  // I/O polarity B
++#define GPINTENA 0x04  // interupt enable A
++#define GPINTENB 0x05  // interupt enable B
++#define DEFVALA 0x06  // register default value A (interupts)
++#define DEFVALB 0x07  // register default value B (interupts)
++#define INTCONA 0x08  // interupt control A
++#define INTCONB 0x09  // interupt control B
++#define IOCON 0x0A  // I/O config (also 0x0B)
++#define GPPUA 0x0C  // port A pullups
++#define GPPUB 0x0D  // port B pullups
++#define INTFA 0x0E  // interupt flag A (where the interupt came from)
++#define INTFB 0x0F  // interupt flag B
++#define INTCAPA 0x10  // interupt capture A (value at interupt is saved here)
++#define INTCAPB 0x11  // interupt capture B
++#define GPIOA 0x12  // port A
++#define GPIOB 0x13  // port B
++#define OLATA 0x14  // output latch A
++#define OLATB 0x15  // output latch B
++
++// I/O config
++#define BANK_OFF 0x00  // addressing mode
++#define BANK_ON 0x80
++#define INT_MIRROR_ON 0x40  // interupt mirror (INTa|INTb)
++#define INT_MIRROR_OFF 0x00
++#define SEQOP_OFF 0x20  // incrementing address pointer
++#define SEQOP_ON 0x00
++#define DISSLW_ON 0x10  // slew rate
++#define DISSLW_OFF 0x00
++#define HAEN_ON 0x08  // hardware addressing
++#define HAEN_OFF 0x00
++#define ODR_ON 0x04  // open drain for interupts
++#define ODR_OFF 0x00
++#define INTPOL_HIGH 0x02  // interupt polarity
++#define INTPOL_LOW 0x00
++
++#define SWITCH_PORT 0x12 // GPIOA
++#define LCD_PORT 0x13 // GPIOB
++
++#define SWITCH_LEFT 0x41 // Left nav (6) and button 0 (0) 0b01000001
++#define SWITCH_DOWN 0x02 // Button 1 (1) 0b00000010
++#define SWITCH_UP 0x04 // Button 2 (2) 0b00000100
++#define SWITCH_RIGHT 0x88 // Right nav (7) and button 3 (3) 0b10001000
++#define SWITCH_ENTER 0x24 // In nav (5) and button 4 (4) 0b00100100
++
++/**
++ * Writes to a register on the MCP23S17.
++ *
++ * \param p     Pointer to PrivateData structure.
++ * \param reg   Register address to write to.
++ * \param data  Data to write
++ */
++static void
++mcp23s17_write_reg(PrivateData * p, unsigned char reg, unsigned char data)
++{
++    unsigned char tx_buf[3] = {0x40 | SPI_HW_ADDR | WRITE_CMD, reg, data};
++    unsigned char rx_buf[sizeof tx_buf];
++
++    struct spi_ioc_transfer spi;
++    spi.tx_buf = (unsigned long) tx_buf;
++    spi.rx_buf = (unsigned long) rx_buf;
++    spi.len = sizeof tx_buf;
++    spi.delay_usecs = spi_delay;
++    spi.speed_hz = spi_speed;
++    spi.bits_per_word = spi_bpw;
++
++    /* do the SPI transaction */
++    if (ioctl(p->fd, SPI_IOC_MESSAGE(1), &spi) < 1) {
++        p->hd44780_functions->drv_report(
++            RPT_ERR, "HD44780: PiFaceCAD: mcp23s17_write_reg: There was "
++                     "a error during the SPI transaction: %s",
++            strerror(errno));
++    }
++}
++
++/**
++ * Reads from a register on the MCP23S17.
++ *
++ * \param p     Pointer to PrivateData structure.
++ * \param reg   Register address to read from.
++ */
++static unsigned char
++mcp23s17_read_reg(PrivateData * p, unsigned char reg)
++{
++    unsigned char tx_buf[3] = {0x40 | SPI_HW_ADDR | READ_CMD, reg, 0};
++    unsigned char rx_buf[sizeof tx_buf];
++
++    struct spi_ioc_transfer spi;
++    spi.tx_buf = (unsigned long) tx_buf;
++    spi.rx_buf = (unsigned long) rx_buf;
++    spi.len = sizeof tx_buf;
++    spi.delay_usecs = spi_delay;
++    spi.speed_hz = spi_speed;
++    spi.bits_per_word = spi_bpw;
++
++    /* do the SPI transaction */
++    if (ioctl(p->fd, SPI_IOC_MESSAGE(1), &spi) < 1) {
++        p->hd44780_functions->drv_report(
++            RPT_ERR, "HD44780: PiFaceCAD: mcp23s17_write_reg: There was"
++                     "a error during the SPI transaction: %s",
++            strerror(errno));
++    }
++    return rx_buf[2]; /* return data */
++}
++
++/**
++ * Writes control and data to HD44780 through Port B on MCP23S17.
++ *
++ * \param p     Pointer to the PrivateData structure.
++ * \param data  The data to write.
++ */
++static void
++write_and_pulse(PrivateData * p, unsigned char data)
++{
++    /* Enable: Off/On/Off - Doesn't seem to work any other way. */
++    mcp23s17_write_reg(p, LCD_PORT, data);
++    if (p->delayBus)
++        p->hd44780_functions->uPause(p, DELAY_PULSE_US);
++    mcp23s17_write_reg(p, LCD_PORT, EN | data);
++    if (p->delayBus)
++        p->hd44780_functions->uPause(p, DELAY_PULSE_US);
++    mcp23s17_write_reg(p, LCD_PORT, data);
++
++    p->hd44780_functions->uPause(p, DELAY_SETTLE_US);
++}
++
++/**
++ * Initialises the HD44780.
++ *
++ * \param p     Pointer to the PrivateData structure.
++ */
++static void
++init_lcd(PrivateData * p)
++{
++    p->hd44780_functions->uPause(p, DELAY_SETUP_0_US);
++    write_and_pulse(p, 0x3);
++
++    p->hd44780_functions->uPause(p, DELAY_SETUP_1_US);
++    write_and_pulse(p, 0x3);
++
++    p->hd44780_functions->uPause(p, DELAY_SETUP_2_US);
++    write_and_pulse(p, 0x3);
++
++    write_and_pulse(p, 0x2);
++
++    pifacecad_HD44780_senddata(p, 0, RS_INSTR,
++        FUNCSET | IF_4BIT | TWOLINE | SMALLCHAR);
++
++    pifacecad_HD44780_senddata(p, 0, RS_INSTR,
++        ONOFFCTRL| DISPOFF | CURSOROFF | CURSORNOBLINK);
++
++    pifacecad_HD44780_senddata(p, 0, RS_INSTR, CLEAR);
++
++    pifacecad_HD44780_senddata(p, 0, RS_INSTR,
++        ENTRYMODE | E_MOVERIGHT | NOSCROLL);
++}
++
++/**
++ * Initialize the driver.
++ *
++ * \param drvthis  Pointer to driver structure.
++ * \retval 0       Success.
++ * \retval -1      Error.
++ */
++int
++hd_init_pifacecad(Driver *drvthis)
++{
++    PrivateData *p = (PrivateData*) drvthis->private_data;
++    HD44780_functions *hd44780_functions = p->hd44780_functions;
++
++    char device[256] = DEFAULT_DEVICE;
++
++    p->backlight_bit = BL;
++
++    /* READ CONFIG FILE */
++    /* Get serial device to use (copied from i2c) */
++    strncpy(device,
++            drvthis->config_get_string(drvthis->name,
++                                       "Device",
++                                       0,
++                                       DEFAULT_DEVICE),
++            sizeof(device));
++    device[sizeof(device)-1] = '\0';
++    report(RPT_INFO, "HD44780: PiFaceCAD: Using device '%s'", device);
++
++    /* Open the SPI device */
++    if ((p->fd = open(device, O_RDWR)) < 0) {
++        report(RPT_ERR,
++               "HD44780: PiFaceCAD: open SPI device '%s' failed: %s",
++               device,
++               strerror(errno));
++        return -1;
++    }
++
++    /* configure SPI device */
++    if (ioctl(p->fd, SPI_IOC_WR_MODE, &spi_mode) < 0) {
++        report(RPT_ERR, "HD44780: PiFaceCAD: Could not set SPI mode.");
++        return -1;
++    }
++    if (ioctl(p->fd, SPI_IOC_WR_BITS_PER_WORD, &spi_bpw) < 0) {
++        report(RPT_ERR, "HD44780: PiFaceCAD Could not set SPI bits per word.");
++        return -1;
++    }
++    if (ioctl(p->fd, SPI_IOC_WR_MAX_SPEED_HZ, &spi_speed) < 0) {
++        report(RPT_ERR, "HD44780: PiFaceCAD: Could not set SPI speed.");
++        return -1;
++    }
++
++    /* Set IO config */
++    const unsigned char ioconfig = BANK_OFF | \
++                                   INT_MIRROR_OFF | \
++                                   SEQOP_ON | \
++                                   DISSLW_OFF | \
++                                   HAEN_ON | \
++                                   ODR_OFF | \
++                                   INTPOL_LOW;
++    mcp23s17_write_reg(p, IOCON, ioconfig);
++    mcp23s17_write_reg(p, IODIRB, 0); /* Set GPIOB (LCD port) to output */
++    mcp23s17_write_reg(p, IODIRA, 0xff); /* Set GPIOA (switches) to input */
++
++    hd44780_functions->senddata = pifacecad_HD44780_senddata;
++    hd44780_functions->backlight = pifacecad_HD44780_backlight;
++    hd44780_functions->close = pifacecad_HD44780_close;
++    hd44780_functions->scankeypad = pifacecad_HD44780_scankeypad;
++
++    init_lcd(p);
++
++    hd44780_functions->uPause(p, DELAY_SETTLE_US);
++
++    common_init(p, IF_4BIT);
++
++    report(RPT_INFO, "HD44780: pifacecad: initialised");
++
++    return 0;
++}
++
++/**
++ * Closes the file descriptor of the HD44780 (SPI bus to MCP23S17).
++ *
++ * \param p  Pointer to driver's private data structure.
++ */
++void
++pifacecad_HD44780_close(PrivateData * p) {
++    if (p->fd >= 0) {
++        close(p->fd);
++    }
++}
++
++
++/**
++ * Send data or commands to the display.
++ *
++ * \param p          Pointer to driver's private data structure.
++ * \param displayID  ID of the display (or 0 for all) to send data to.
++ * \param flags      Defines whether to end a command or data.
++ * \param ch         The value to send.
++ */
++void
++pifacecad_HD44780_senddata(PrivateData * p,
++                           unsigned char displayID,
++                           unsigned char flags,
++                           unsigned char ch)
++{
++    unsigned char portControl = 0;
++    unsigned char h = (ch >> 4) & 0x0f; // high and low nibbles
++    unsigned char l = ch & 0x0f;
++
++    if (flags == RS_INSTR)
++        portControl = 0;
++    else //if (flags == RS_DATA)
++        portControl = RS;
++
++    portControl |= p->backlight_bit;
++
++    write_and_pulse(p, portControl | h);
++    write_and_pulse(p, portControl | l);
++}
++
++
++/**
++ * Turn display backlight on or off.
++ *
++ * \param p      Pointer to driver's private data structure.
++ * \param state  New backlight status.
++ */
++void pifacecad_HD44780_backlight(PrivateData *p, unsigned char state)
++{
++    p->backlight_bit = ((p->have_backlight && state) ? BL : 0);
++    unsigned char port_state = mcp23s17_read_reg(p, LCD_PORT);
++    if (p->backlight_bit)
++        port_state |= BL; // set
++    else
++        port_state &= 0xff ^ BL;
++    mcp23s17_write_reg(p, LCD_PORT, port_state);
++}
++
++
++/**
++ * Scan the LCD keys
++ *
++ * \param p      Pointer to driver's private data structure.
++ * \retval key   Key number
++ */
++unsigned char
++pifacecad_HD44780_scankeypad(PrivateData *p)
++{
++    unsigned char switch_state = mcp23s17_read_reg(p, SWITCH_PORT);
++
++    if (switch_state == 0)
++        return 0;
++
++    if (switch_state & SWITCH_LEFT)
++        return 1;
++
++    if (switch_state & SWITCH_DOWN)
++        return 2;
++
++    if (switch_state & SWITCH_UP)
++        return 3;
++
++    if (switch_state & SWITCH_RIGHT)
++        return 4;
++
++    if (switch_state & SWITCH_ENTER)
++        return 5;
++
++    return 0;
++}
+diff -urN -X lcdproc/diff_ignore lcdproc/server/drivers/hd44780-pifacecad.h lcdproc.modified/server/drivers/hd44780-pifacecad.h
+--- lcdproc/server/drivers/hd44780-pifacecad.h	1970-01-01 01:00:00.000000000 +0100
++++ lcdproc.modified/server/drivers/hd44780-pifacecad.h	2013-11-28 10:47:14.947437067 +0000
+@@ -0,0 +1,9 @@
++#ifndef HD_PIFACECAD_H
++#define HD_PIFACECAD_H
++
++#include "lcd.h"					  /* for Driver */
++
++// initialise this particular driver
++int hd_init_pifacecad(Driver *drvthis);
++
++#endif
+diff -urN -X lcdproc/diff_ignore lcdproc/server/drivers/Makefile.am lcdproc.modified/server/drivers/Makefile.am
+--- lcdproc/server/drivers/Makefile.am	2013-05-08 20:19:56.000000000 +0100
++++ lcdproc.modified/server/drivers/Makefile.am	2013-11-28 10:44:08.795611575 +0000
+@@ -95,7 +95,7 @@
+ glcdlib_SOURCES =    lcd.h lcd_lib.h glcdlib.h glcdlib.c report.h
+ glk_SOURCES =        lcd.h glk.c glk.h glkproto.c glkproto.h report.h
+ hd44780_SOURCES =    lcd.h lcd_lib.h hd44780.h hd44780.c hd44780-drivers.h hd44780-low.h hd44780-charmap.h report.h adv_bignum.h
+-EXTRA_hd44780_SOURCES = port.h lpt-port.h timing.h lcd_sem.c lcd_sem.h hd44780-4bit.c hd44780-4bit.h hd44780-ext8bit.c hd44780-ext8bit.h hd44780-serialLpt.c hd44780-serialLpt.h hd44780-serial.c hd44780-serial.h hd44780-winamp.c hd44780-winamp.h hd44780-bwct-usb.c hd44780-bwct-usb.h hd44780-lcd2usb.c hd44780-lcd2usb.h hd44780-usbtiny.c hd44780-usbtiny.h hd44780-lis2.c hd44780-lis2.h hd44780-i2c.c hd44780-i2c.h hd44780-ftdi.c hd44780-ftdi.h hd44780-ethlcd.c hd44780-ethlcd.h hd44780-uss720.c hd44780-uss720.h hd44780-usblcd.c hd44780-usblcd.h hd44780-usb4all.c hd44780-usb4all.h hd44780-rpi.c hd44780-rpi.h hd44780-piplate.c hd44780-piplate.h
++EXTRA_hd44780_SOURCES = port.h lpt-port.h timing.h lcd_sem.c lcd_sem.h hd44780-4bit.c hd44780-4bit.h hd44780-ext8bit.c hd44780-ext8bit.h hd44780-serialLpt.c hd44780-serialLpt.h hd44780-serial.c hd44780-serial.h hd44780-winamp.c hd44780-winamp.h hd44780-bwct-usb.c hd44780-bwct-usb.h hd44780-lcd2usb.c hd44780-lcd2usb.h hd44780-usbtiny.c hd44780-usbtiny.h hd44780-lis2.c hd44780-lis2.h hd44780-i2c.c hd44780-i2c.h hd44780-ftdi.c hd44780-ftdi.h hd44780-ethlcd.c hd44780-ethlcd.h hd44780-uss720.c hd44780-uss720.h hd44780-usblcd.c hd44780-usblcd.h hd44780-usb4all.c hd44780-usb4all.h hd44780-rpi.c hd44780-rpi.h hd44780-piplate.c hd44780-piplate.h hd44780-pifacecad.c hd44780-pifacecad.h
+ i2500vfd_SOURCES =   lcd.h i2500vfd.c i2500vfd.h glcd_font5x8.h report.h
+ icp_a106_SOURCES =   lcd.h lcd_lib.h icp_a106.c icp_a106.h report.h
+ imon_SOURCES =       lcd.h lcd_lib.h hd44780-charmap.h imon.h imon.c report.h adv_bignum.h
