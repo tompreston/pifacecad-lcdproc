@@ -15,6 +15,7 @@ Untar and autogen some configuration files:
 
 Then download the patch from this repository and apply it with:
 
+    $ wget https://raw.github.com/tompreston/pifacecad-lcdproc/master/hd44780-pifacecad.patch
     $ patch -p1 < hd44780-pifacecad.h
 
 Building and Running LCDproc
