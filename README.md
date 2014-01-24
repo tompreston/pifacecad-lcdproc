@@ -30,3 +30,7 @@ Load the SPI module: http://piface.github.io/pifacecommon/installation.html#enab
 Then, run the server with:
 
     $ server/LCDd -c LCDd.conf
+
+XBMC
+----
+Once the server is running you can use the [LCDproc XBMC addon](http://wiki.xbmc.org/index.php?title=Add-on:XBMC_LCDproc) to display XBMC information on PiFace Control and Display.
