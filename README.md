@@ -25,6 +25,8 @@ Configure the build to enable the hd44780 drivers and then `make` with:
     $ ./configure --enable-drivers=hd44780
     $ make
 
-Run the server with:
+Load the SPI module: http://piface.github.io/pifacecommon/installation.html#enable-the-spi-module
+
+Then, run the server with:
 
     $ server/LCDd -c LCDd.conf
