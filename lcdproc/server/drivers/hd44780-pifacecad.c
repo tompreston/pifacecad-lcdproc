@@ -316,6 +316,7 @@ hd_init_pifacecad(Driver *drvthis)
     mcp23s17_write_reg(p, IOCON, ioconfig);
     mcp23s17_write_reg(p, IODIRB, 0); /* Set GPIOB (LCD port) to output */
     mcp23s17_write_reg(p, IODIRA, 0xff); /* Set GPIOA (switches) to input */
+    mcp23s17_write_reg(p, GPPUA, 0xff); /* Set GPPUA (input pullups) high */
 
     hd44780_functions->senddata = pifacecad_HD44780_senddata;
     hd44780_functions->backlight = pifacecad_HD44780_backlight;
